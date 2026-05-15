@@ -1060,7 +1060,7 @@ def pet_asce(T_A_K, u, ea, p, Sdn, z_u, z_T, f_cd=1, reference=TALL_REFERENCE,
     u_2 = wind_profile(u, z_u, z_0M, d, 2.0)
 
     LE = (delta * (Rn - G) + psicr * C_n * u_2 * (es - ea) / T_A_K) / (
-                delta + psicr * C_d * u_2)
+                delta + psicr * (1 + C_d * u_2))
 
     return LE
 
@@ -1342,3 +1342,27 @@ def fill_and_update_et(k_cs, et, et_ref, gaps):
     # Update the K_cs coefficient with valid observations
     kcs_updated[valid] = et_filled[valid] / et_ref[valid]
     return et_filled, kcs_updated
+
+
+def leaf_stomatal_resistance(lai, r_c, leaf_type=TSEB.res.AMPHISTOMATOUS):
+    ''' Calculate the bulk canopy stomatal resistance.
+
+    Parameters
+    ----------
+    lai : float
+        Leaf Area Index (m2 m-2).
+    r_c : float
+        Canopy bulk stomatal resistance (s m-1)
+    leaf_type : int
+        1: Hipostomatous leaves (stomata only in one side of the leaf)
+        2: Amphistomatous leaves (stomata in both sides of the leaf)
+
+
+    Returns
+    -------
+    Rst: float
+        Minimum (unstressed) single-leaf stomatal resistance (s m -1)
+    '''
+
+    r_st = r_c * leaf_type * lai
+    return np.asarray(r_st)
