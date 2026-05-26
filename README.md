@@ -22,26 +22,14 @@ To give us a better overview of the use of the model in different landscapes, cl
 Nieto, H., Guzinski, R., & Kustas, W. P. (2018). pyTSEB: A python Two Source Energy Balance model for estimation of evapotranspiration with remote sensing data (Version 2.2) [Computer software]. https://doi.org/10.5281/zenodo.594732 
 
 ## Installation
-To install pyTSEB follow these steps:
 
-1. Make sure GDAL is installed on your system. This is a required dependency for geospatial data processing. You can use conda to create a specific Python environment:
-```bash
-conda create -n pytseb
-conda install -c conda-forge gdal
-```
+Download the project to your local system, enter the download directory and then type
 
-2. Install pyTSEB package from PyPi:
-```bash
-conda activate pytseb
-pip install pytseb
-```
-or directly from the downloaded/cloned pyTSEB local directory
-```bash
-conda activate pytseb
-pip install ./
-```
+`pip install ./` 
 
-The following Python libraries are required and will be installed during this process:
+if you want to install pyTSEB and its low-level modules in your Python distribution. 
+
+The following Python libraries will be required:
 
 - Numpy
 - Pandas
@@ -51,6 +39,10 @@ The following Python libraries are required and will be installed during this pr
 - netCDF4
 - bokeh
 
+With `conda`, you can create a complete environment with
+```
+conda env create -f environment.yml
+```
 
 ## Code Example
 ### High-level example

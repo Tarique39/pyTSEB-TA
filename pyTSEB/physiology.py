@@ -106,16 +106,12 @@ def gpp_leaf_no_gs(t_a_k,
 
     Returns
     -------
-    gpp : float or array_like
-        Gross Primary Production (micromol C02 m-2 s-1)
-    rd : float or array_like
-        Leaf respiration (micromol C02 m-2 s-1)
-    gs :  float or array_like
-        Leaf Stomata conductance (micromol C02 m-2)
+    gs : float or array_like
+        C02 Stomatal conductance (mol/m2 s)
+    assim : float or array_like
+        Net Assimilation rate
     ci : float or array_like
         Leaf substomatal C02 concentration (micromol mol-1)
-    temp_limited : bool or array_like
-        Flag for cases with photosynthesis limited by temperature
 
     References
     ----------
@@ -173,8 +169,7 @@ def gpp_leaf_no_gs(t_a_k,
                                                  fw=fw,
                                                   verbose=verbose)
 
-    gpp = assim + rd
-    return gpp, rd, gst, ci, temp_limited
+    return assim, rd, gst, ci, temp_limited
 
 
 def gs_solver_leaf(vpd, ca, vc_max, kc, ko, j_i, tes_star, rd, g0p, a_1, d_0, oi=OI,
@@ -391,14 +386,12 @@ def gpp_canopy_no_gs(vpd,
 
     Returns
     -------
-    gpp : float or array_like
-        Gross Primary Production (micromol C02 m-2 s-1)
+    assim : float or array_like
+        Net Assimilation rate (micromol C02 m-2 s-1)
     rd : float or array_like
-        Canopy respiration (micromol C02 m-2 s-1)
-    gs :  float or array_like
-        Effective leaf Stomata conductance (micromol C02 m-2)
+        Leaf respiration (micromol C02 m-2 s-1)
     ci : float or array_like
-        Effective leaf substomatal C02 concentration (micromol mol-1)
+        Leaf substomatal C02 concentration (micromol mol-1)
     temp_limited : bool or array_like
         Flag for cases with photosynthesis limited by temperature
 
@@ -555,8 +548,7 @@ def gpp_canopy_no_gs(vpd,
     ci = w_shaded * ci_shaded + w_sunlit * ci_sunlit
     temp_limited = w_shaded * temp_limited_shaded + w_sunlit * temp_limited_sunlit
 
-    gpp = assim + rd
-    return gpp, rd, gs, ci, temp_limited
+    return assim, rd, gs, ci, temp_limited
 
 
 def gs_solver_canopy(vpd, lai, r_x, r_a, ca, vc_max, kc, ko, j_c, tes_star, rd, r_soil, g0p, a_1, d_0,
@@ -756,12 +748,12 @@ def gpp_canopy(gs,
 
     Returns
     -------
-    gpp : float or array_like
-        Gross Primary Production (micromol C02 m-2 s-1)
+    assim : float or array_like
+        Net Assimilation rate (micromol C02 m-2 s-1)
     rd : float or array_like
-        Canopy respiration (micromol C02 m-2 s-1)
+        Leaf respiration (micromol C02 m-2 s-1)
     ci : float or array_like
-        Effective leaf substomatal C02 concentration (micromol mol-1)
+        Leaf substomatal C02 concentration (micromol mol-1)
     temp_limited : bool or array_like
         Flag for cases with photosynthesis limited by temperature
 
@@ -882,8 +874,7 @@ def gpp_canopy(gs,
     assim, ci, temp_limited = assim_tuzet(r_c, r_a, ca, vc_max_c, kc, ko, j_c,
                                           tes_star, rd, f_soil, tpu=tpu, oi=oi)
 
-    gpp = assim + rd
-    return gpp, rd, ci, temp_limited
+    return assim, rd, ci, temp_limited
 
 
 def gpp_canopy_multilayer(gs,
@@ -1001,12 +992,12 @@ def gpp_canopy_multilayer(gs,
 
     Returns
     -------
-    gpp : float or array_like
-        Gross Primary Production (micromol C02 m-2 s-1)
+    assim : float or array_like
+        Net Assimilation rate (micromol C02 m-2 s-1)
     rd : float or array_like
-        Canopy respiration (micromol C02 m-2 s-1)
+        Leaf respiration (micromol C02 m-2 s-1)
     ci : float or array_like
-        Effective leaf substomatal C02 concentration (micromol mol-1)
+        Leaf substomatal C02 concentration (micromol mol-1)
     temp_limited : bool or array_like
         Flag for cases with photosynthesis limited by temperature
 
@@ -1140,7 +1131,6 @@ def gpp_canopy_multilayer(gs,
     assim, ci, temp_limited = assim_tuzet(r_c, r_a, ca, vc_max, kc, ko, j_c,
                                           tes_star, rd, f_soil, tpu=tpu, oi=oi)
 
-    gpp = assim + rd
     return assim, rd, ci, temp_limited
 
 
@@ -1272,12 +1262,12 @@ def gpp_canopy_2leaf(gs,
 
     Returns
     -------
-    gpp : float or array_like
-        Gross Primary Productione (micromol C02 m-2 s-1)
+    assim : float or array_like
+        Net Assimilation rate (micromol C02 m-2 s-1)
     rd : float or array_like
-        Canopy respiration (micromol C02 m-2 s-1)
+        Leaf respiration (micromol C02 m-2 s-1)
     ci : float or array_like
-        Effective leaf substomatal C02 concentration (micromol mol-1)
+        Leaf substomatal C02 concentration (micromol mol-1)
     temp_limited : bool or array_like
         Flag for cases with photosynthesis limited by temperature
 
@@ -1423,8 +1413,7 @@ def gpp_canopy_2leaf(gs,
     temp_limited = w_shaded * temp_limited_shaded \
                    + w_sunlit * temp_limited_sunlit
 
-    gpp = assim + rd
-    return gpp, rd, ci, temp_limited
+    return assim, rd, ci, temp_limited
 
 
 def canopy_integral(lai, k):
