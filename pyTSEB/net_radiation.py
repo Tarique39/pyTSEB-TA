@@ -627,6 +627,28 @@ def calc_Sn_Campbell(lai, sza, S_dn_dir, S_dn_dif, fvis, fnir, rho_leaf_vis,
 
 
 def leafangle_2_chi(alpha):
+    """
+    Convert [Campbell1990]_ mean leaf inclination angle to the Xi parameter
+
+    Parameters
+    ----------
+    alpha : array_like
+        Mean leaf inclination angle (degrees)
+
+
+    Returns
+    -------
+    x_lad: array_like
+        Xi parameter for the ellipsoidal Leaf Angle Distribution function.
+
+    References
+    ----------
+    .. [Campbell1990] Campbell, G.S., 1990.
+        Derivation of an angle density function for canopies with
+        ellipsoidal leaf angle distributions.
+        Agricultural and Forest Meteorology 49, 173–176.
+        https://doi.org/10.1016/0168-1923(90)90030-A
+    """
     alpha = np.radians(alpha)
     x_lad = ((alpha / 9.65) ** (1. / -1.65)) - 3.
 
@@ -634,6 +656,27 @@ def leafangle_2_chi(alpha):
 
 
 def chi_2_leafangle(x_lad):
+    """
+    Convert [Campbell1990]_ the Xi parameter to mean leaf inclination angle
+
+    Parameters
+    ----------
+    x_lad: array_like
+        Xi parameter for the ellipsoidal Leaf Angle Distribution function.
+
+    Returns
+    -------
+    alpha : array_like
+        Mean leaf inclination angle (degrees)
+
+    References
+    ----------
+    .. [Campbell1990] Campbell, G.S., 1990.
+        Derivation of an angle density function for canopies with
+        ellipsoidal leaf angle distributions.
+        Agricultural and Forest Meteorology 49, 173–176.
+        https://doi.org/10.1016/0168-1923(90)90030-A
+    """
     alpha = 9.65 * (3. + x_lad) ** -1.65
     alpha = np.degrees(alpha)
     return alpha
