@@ -1060,7 +1060,7 @@ def pet_asce(T_A_K, u, ea, p, Sdn, z_u, z_T, f_cd=1, reference=TALL_REFERENCE,
     u_2 = wind_profile(u, z_u, z_0M, d, 2.0)
 
     LE = (delta * (Rn - G) + psicr * C_n * u_2 * (es - ea) / T_A_K) / (
-                delta + psicr(1 + C_d * u_2))
+                delta + psicr * (1 + C_d * u_2))
 
     return LE
 
