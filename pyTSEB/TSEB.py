@@ -1486,7 +1486,7 @@ def TSEB_SW(Tr_K,
                          iterations))
 
     return (flag, T_S, T_C, T_AC, Ln_S, Ln_C, LE_C, H_C, LE_S, H_S, G, R_S, R_x,
-            R_A, Rss_out, Rst_out, R_c, u_friction, L, n_iterations)
+            R_A, Rss_out, Rst_out, u_friction, L, n_iterations)
 
 
 def TSEB_PM(Tr_K,
@@ -1983,8 +1983,8 @@ def TSEB_PM(Tr_K,
                  iterations,
                  R_c))
 
-    return (flag, T_S, T_C, T_AC, Ln_S, Ln_C, LE_C, H_C, LE_S, H_S, G, R_S, R_x, R_A, u_friction,
-            L, n_iterations, R_c)
+    return (flag, T_S, T_C, T_AC, Ln_S, Ln_C, LE_C, H_C, LE_S, H_S, G, R_S, R_x, R_A, R_c, u_friction,
+            L, n_iterations)
 
 
 def _L_diff(L, L_old):
