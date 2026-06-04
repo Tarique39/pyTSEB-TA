@@ -1048,12 +1048,12 @@ class PyTSEB(object):
 
         if self.calc_daily_ET:
             # Keep primary stack to the four bulk fluxes (Rn, H, LE, G); see notebook docs.
-            output_structure['ET_day'] = S_A
+            output_structure['ET_day'] = S_P
 
         if self.water_stress:
             output_structure['LE_0'] = S_A
             output_structure['LE_C_0'] = S_A
-            output_structure['CWSI'] = S_A
+            output_structure['CWSI'] = S_P
 
         return output_structure
 
@@ -1778,7 +1778,7 @@ class PyTSEB_PM(PyTSEB):
             calcG_params=[model_params["calcG_params"][0],
                           model_params["calcG_params"][1][i]]
         )
-        keys = ['flag', 'T_S1', 'T_C1', 'T_AC1', 'Ln_S1', 'Ln_C1', 'LE_C1', 'H_C1', 'LE_S1', 'H_S1', 'G1', 'R_S1', 'R_x1', 'R_A1', 'u_friction', 'L', 'n_iterations', 'R_c1']
+        keys = ['flag', 'T_S1', 'T_C1', 'T_AC1', 'Ln_S1', 'Ln_C1', 'LE_C1', 'H_C1', 'LE_S1', 'H_S1', 'G1', 'R_S1', 'R_x1', 'R_A1', 'R_c1', 'u_friction', 'L', 'n_iterations']
         _assign_outputs(results, out_data, i, keys)
 
 class PyTSEB_SW(PyTSEB):
@@ -1842,7 +1842,7 @@ class PyTSEB_SW(PyTSEB):
         keys = [
             'flag', 'T_S1', 'T_C1', 'T_AC1', 'Ln_S1', 'Ln_C1', 'LE_C1', 'H_C1',
             'LE_S1', 'H_S1', 'G1', 'R_S1', 'R_x1', 'R_A1', 'Rss_out', 'Rst_out',
-            'R_c', 'u_friction', 'L', 'n_iterations',
+            'u_friction', 'L', 'n_iterations',
         ]
         _assign_outputs(results, out_data, i, keys)
 
