@@ -91,6 +91,9 @@ class TSEBIPythonInterface(TSEBConfigFileInterface):
         self.r_c_min = 50.0
         self.Rst_min = 100.0
         self.R_ss = 500.0
+        self.Rst_form = 0
+        self.gm = 0.58
+        self.Tm = 9.11
         # Output variables saved in images
         # self.fields=('H1','LE1','R_n1','G1')
         # Ancillary output variables
@@ -733,6 +736,17 @@ class TSEBIPythonInterface(TSEBConfigFileInterface):
             value=self.Rst_min, min=0, max=10000, description='Rst_min', width=120)
         self.w_R_ss = widgets.BoundedFloatText(
             value=self.R_ss, min=0, max=10000, description='R_ss', width=120)
+        self.w_Rst_form = widgets.ToggleButtons(
+            description='Rst formulation (SW / CWSI ref.)',
+            options={'Constant Rst_min': 0, 'Monteith VPD (gm, Tm)': 1},
+            value=self.Rst_form,
+            width=320)
+        self.w_gm = widgets.BoundedFloatText(
+            value=self.gm, min=0, max=100, step=0.01,
+            description='gm (mol m-2 s-1)', width=160)
+        self.w_Tm = widgets.BoundedFloatText(
+            value=self.Tm, min=0, max=1000, step=0.01,
+            description='Tm (mmol m-2 s-1)', width=170)
         self._setup_run_review_widgets()
         self.opt_page = widgets.VBox([
             self.w_G_form,
@@ -745,7 +759,10 @@ class TSEBIPythonInterface(TSEBConfigFileInterface):
             self.water_stress_params_box,
             widgets.HTML(
                 '<i>Rst_min and R_ss are used by TSEB_SW and as unstressed '
-                'reference resistances when water stress is enabled.</i>'),
+                'reference resistances when water stress is enabled. '
+                'Monteith VPD uses Kustas et al. (2022) Eq. 3 with gm and Tm.</i>'),
+            widgets.HBox([self.w_Rst_form]),
+            widgets.HBox([self.w_gm, self.w_Tm]),
             widgets.HTML('<b>Water stress diagnostics</b>'),
             self.w_water_stress,
         ], background_color='#EEE')
@@ -820,6 +837,9 @@ class TSEBIPythonInterface(TSEBConfigFileInterface):
             self.w_r_c_min,
             self.w_Rst_min,
             self.w_R_ss,
+            self.w_Rst_form,
+            self.w_gm,
+            self.w_Tm,
             self.w_G_form,
             self.w_row,
             self.w_rowaz,
@@ -842,9 +862,20 @@ class TSEBIPythonInterface(TSEBConfigFileInterface):
         water_stress = self.w_water_stress.value
         self.w_r_c_min.layout.display = 'block' if model == 'TSEB_PM' else 'none'
         show_rst = water_stress or model == 'TSEB_SW'
-        display = 'block' if show_rst else 'none'
-        self.w_Rst_min.layout.display = display
-        self.w_R_ss.layout.display = display
+        if not show_rst:
+            for widget in (self.w_Rst_min, self.w_R_ss, self.w_Rst_form, self.w_gm, self.w_Tm):
+                widget.layout.display = 'none'
+            return
+        self.w_R_ss.layout.display = 'block'
+        self.w_Rst_form.layout.display = 'block'
+        if self.w_Rst_form.value == 0:
+            self.w_Rst_min.layout.display = 'block'
+            self.w_gm.layout.display = 'none'
+            self.w_Tm.layout.display = 'none'
+        else:
+            self.w_Rst_min.layout.display = 'none'
+            self.w_gm.layout.display = 'block'
+            self.w_Tm.layout.display = 'block'
 
     @staticmethod
     def _ancillary_output_path(output_file):
@@ -876,6 +907,9 @@ class TSEBIPythonInterface(TSEBConfigFileInterface):
         if model == 'TSEB_SW' or water_stress:
             params['Rst_min'] = self.w_Rst_min.value
             params['R_ss'] = self.w_R_ss.value
+            params['Rst_form'] = self.w_Rst_form.value
+            params['gm'] = self.w_gm.value
+            params['Tm'] = self.w_Tm.value
         model_obj = model_classes[model](params)
         s_dn_24 = getattr(self, 'params', {}).get('S_dn_24', '')
         if s_dn_24 and str(s_dn_24).strip() not in ('', '0', '0.0'):
@@ -936,9 +970,18 @@ class TSEBIPythonInterface(TSEBConfigFileInterface):
         if model == 'TSEB_PM':
             lines.append(f'<p><b>r_c_min (PM):</b> {self.w_r_c_min.value} s/m</p>')
         if model == 'TSEB_SW' or water_stress:
+            rst_label = (
+                'Monteith VPD'
+                if self.w_Rst_form.value == 1 else
+                f'constant Rst_min={self.w_Rst_min.value} s/m'
+            )
             lines.append(
-                f'<p><b>Rst_min:</b> {self.w_Rst_min.value} s/m; '
+                f'<p><b>Stomatal resistance:</b> {rst_label}; '
                 f'<b>R_ss:</b> {self.w_R_ss.value} s/m</p>')
+            if self.w_Rst_form.value == 1:
+                lines.append(
+                    f'<p><b>gm:</b> {self.w_gm.value} mol m-2 s-1; '
+                    f'<b>Tm:</b> {self.w_Tm.value} mmol m-2 s-1</p>')
         s_dn_24 = getattr(self, 'params', {}).get('S_dn_24', '')
         if s_dn_24 and str(s_dn_24).strip() not in ('', '0', '0.0'):
             lines.append(
@@ -1077,6 +1120,9 @@ class TSEBIPythonInterface(TSEBConfigFileInterface):
         if self.params['water_stress']:
             self.params['Rst_min'] = self.w_Rst_min.value
             self.params['R_ss'] = self.w_R_ss.value
+            self.params['Rst_form'] = self.w_Rst_form.value
+            self.params['gm'] = self.w_gm.value
+            self.params['Tm'] = self.w_Tm.value
 
         # Add PM and SW specific parameters
         if self.params['model'] == 'TSEB_PM':
@@ -1084,6 +1130,9 @@ class TSEBIPythonInterface(TSEBConfigFileInterface):
         if self.params['model'] == 'TSEB_SW':
             self.params['Rst_min'] = self.w_Rst_min.value
             self.params['R_ss'] = self.w_R_ss.value
+            self.params['Rst_form'] = self.w_Rst_form.value
+            self.params['gm'] = self.w_gm.value
+            self.params['Tm'] = self.w_Tm.value
 
         self.ready = True
 
@@ -1205,6 +1254,12 @@ class TSEBIPythonInterface(TSEBConfigFileInterface):
             self.w_Rst_min.value = self.params['Rst_min']
         if 'R_ss' in self.params:
             self.w_R_ss.value = self.params['R_ss']
+        if 'Rst_form' in self.params:
+            self.w_Rst_form.value = int(self.params['Rst_form'])
+        if 'gm' in self.params:
+            self.w_gm.value = self.params['gm']
+        if 'Tm' in self.params:
+            self.w_Tm.value = self.params['Tm']
         calc_row = self.params.get('calc_row', [0, 0])
         if calc_row[0]:
             self.w_row.value = True
@@ -1243,6 +1298,12 @@ class TSEBIPythonInterface(TSEBConfigFileInterface):
                 self.w_Rst_min.value = self.params['Rst_min']
             if 'R_ss' in self.params:
                 self.w_R_ss.value = self.params['R_ss']
+            if 'Rst_form' in self.params:
+                self.w_Rst_form.value = int(self.params['Rst_form'])
+            if 'gm' in self.params:
+                self.w_gm.value = self.params['gm']
+            if 'Tm' in self.params:
+                self.w_Tm.value = self.params['Tm']
 
         self._on_run_setting_change()
         print('Loaded configuration. Review the summary below, then check '
@@ -1336,6 +1397,9 @@ class TSEBIPythonInterface(TSEBConfigFileInterface):
         fid.write('water_stress=' + str(int(self.w_water_stress.value)) + '\n')
         fid.write('Rst_min=' + str(self.w_Rst_min.value) + '\n')
         fid.write('R_ss=' + str(self.w_R_ss.value) + '\n')
+        fid.write('Rst_form=' + str(self.w_Rst_form.value) + '\n')
+        fid.write('gm=' + str(self.w_gm.value) + '\n')
+        fid.write('Tm=' + str(self.w_Tm.value) + '\n')
         # Add PM and SW specific parameters
         if self.w_model.value == 'TSEB_PM':
             fid.write('r_c_min=' + str(self.w_r_c_min.value) + '\n')

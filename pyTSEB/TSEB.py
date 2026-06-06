@@ -966,6 +966,9 @@ def TSEB_SW(Tr_K,
             z0_soil=0.01,
             Rst_min=100,
             Rss_min=500,
+            Rst_form=0,
+            gm=0.58,
+            Tm=9.11,
             x_LAD=1,
             f_c=1.0,
             f_g=1.0,
@@ -1021,6 +1024,19 @@ def TSEB_SW(Tr_K,
         average/effective leaf width (m).
     z0_soil : float, optional
         bare soil aerodynamic roughness length (m).
+    Rst_min : float, optional
+        Minimum single-leaf stomatal resistance (s m-1) when Rst_form=0.
+    Rss_min : float, optional
+        Minimum soil surface resistance to water vapour transport (s m-1).
+    Rst_form : int, optional
+        Stomatal resistance formulation for the unstressed canopy floor.
+
+            * 0 [Default] constant Rst_min.
+            * 1 : Monteith (1995) VPD-dependent minimum (Kustas et al. 2022).
+    gm : float, optional
+        Maximum stomatal conductance (mol m-2 s-1), used when Rst_form=1.
+    Tm : float, optional
+        Transpiration scaling parameter (mmol m-2 s-1), used when Rst_form=1.
     alpha_PT : float, optional
         Priestley Taylor coeffient for canopy potential transpiration,
         use 1.26 by default.
@@ -1190,6 +1206,11 @@ def TSEB_SW(Tr_K,
     rho_cp = rho * c_p
     vpd = es - ea
 
+    if Rst_form:
+        Rst_floor = pet.calc_rst_monteith_vpd(vpd, gm, Tm, T_A_K, p)
+    else:
+        Rst_floor = np.asarray(Rst_min)
+
     # Calculate LAI dependent parameters for dataset where LAI > 0
     omega0 = CI.calc_omega0_Kustas(LAI, f_c, x_LAD=x_LAD, isLAIeff=True)
     F = np.asarray(LAI / f_c)  # Real LAI
@@ -1254,7 +1275,7 @@ def TSEB_SW(Tr_K,
         LE_S[np.logical_and(~L_converged, flag != F_INVALID)] = -1
 
         rst_step = STEP_RST
-        Rst = Rst_min[:] - STEP_RST
+        Rst = Rst_floor[:] - STEP_RST
         Rss = Rss_min[:] - STEP_RSS
         while np.any(LE_S[i] < 0):
             i = np.logical_and.reduce((LE_S < 0,
@@ -1312,7 +1333,13 @@ def TSEB_SW(Tr_K,
                                                        }
                                                       )
 
-            R_c[i] = pet.bulk_stomatal_resistance(LAI[i] * f_g[i], Rst[i], leaf_type=leaf_type[i])
+            if Rst_form:
+                Rst_vpd = pet.calc_rst_monteith_vpd(vpd[i], gm, Tm, T_A_K[i], p[i])
+                Rst_eff = np.maximum(Rst[i], Rst_vpd)
+            else:
+                Rst_eff = Rst[i]
+            R_c[i] = pet.bulk_stomatal_resistance(
+                LAI[i] * f_g[i], Rst_eff, leaf_type=leaf_type[i])
             # Calculate the canopy and soil temperatures using the Priestley Taylor approach
             _, _, _, C_s, C_c = pet.calc_effective_resistances_SW(R_A[i],
                                                                         R_x[i],

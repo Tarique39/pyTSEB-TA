@@ -297,6 +297,9 @@ def shuttleworth_wallace(T_A_K,
                          w_C=1,
                          Rst_min=100,
                          R_ss=500,
+                         Rst_form=0,
+                         gm=0.58,
+                         Tm=9.11,
                          resistance_form=None,
                          calcG_params=None,
                          const_L=None,
@@ -354,6 +357,15 @@ def shuttleworth_wallace(T_A_K,
     Rss : float
         Resistance to water vapour transport in the soil surface (s m-1),
         Default = 500 s m-1 (moderately dry soil)
+    Rst_form : int, optional
+        Stomatal resistance formulation for the unstressed canopy floor.
+
+            * 0 [Default] constant Rst_min.
+            * 1 : Monteith (1995) VPD-dependent minimum (Kustas et al. 2022).
+    gm : float, optional
+        Maximum stomatal conductance (mol m-2 s-1), used when Rst_form=1.
+    Tm : float, optional
+        Transpiration scaling parameter (mmol m-2 s-1), used when Rst_form=1.
     resistance_form : int, optional
         Flag to determine which Resistances R_x, R_S model to use.
 
@@ -458,6 +470,9 @@ def shuttleworth_wallace(T_A_K,
      w_C,
      Rst_min,
      R_ss,
+     Rst_form,
+     gm,
+     Tm,
      calcG_array,
      leaf_type] = map(TSEB._check_default_parameter_size,
                       [u,
@@ -481,10 +496,13 @@ def shuttleworth_wallace(T_A_K,
                        f_g,
                        w_C,
                        Rst_min,
-                       R_ss,
-                       calcG_params[1],
-                       leaf_type],
-                      [T_A_K] * 24)
+                         R_ss,
+                         Rst_form,
+                         gm,
+                         Tm,
+                         calcG_params[1],
+                         leaf_type],
+                      [T_A_K] * 28)
 
     res_params = resistance_form[1]
     resistance_form = resistance_form[0]
@@ -510,8 +528,12 @@ def shuttleworth_wallace(T_A_K,
     omega0 = TSEB.CI.calc_omega0_Kustas(LAI, f_c, x_LAD=x_LAD, isLAIeff=True)
 
     # Calculate bulk stomatal resistance
-    R_c = bulk_stomatal_resistance(LAI * f_g, Rst_min, leaf_type=leaf_type)
-    del leaf_type, Rst_min
+    if Rst_form:
+        Rst_eff = calc_rst_monteith_vpd(vpd, gm, Tm, T_A_K, p)
+    else:
+        Rst_eff = Rst_min
+    R_c = bulk_stomatal_resistance(LAI * f_g, Rst_eff, leaf_type=leaf_type)
+    del leaf_type
 
     # Initially assume stable atmospheric conditions and set variables for
     # iteration of the Monin-Obukhov length
@@ -1158,6 +1180,83 @@ def le_penman(r_n, g_flux, vpd, r_a, r_r, delta, rho, cp, psicr):
     le = ((delta * (r_n - g_flux) + rho * cp * vpd / r_hr)
           / (delta + psicr_star))
     return le
+
+
+def calc_leaf_stomatal_conductance_monteith(vpd, gm, Tm):
+    '''Leaf stomatal conductance as a function of VPD (Monteith 1995).
+
+    Kustas et al. (2022) Irrigation Science, Eq. 3:
+    gs = gm / (1 + gm * VPD / Tm)
+
+    Parameters
+    ----------
+    vpd : float or array_like
+        Vapor pressure deficit (mb).
+    gm : float or array_like
+        Maximum stomatal conductance (mol m-2 s-1).
+    Tm : float or array_like
+        Reference transpiration rate scaling parameter (mmol m-2 s-1).
+
+    Returns
+    -------
+    gs : float or array_like
+        Leaf stomatal conductance (mol m-2 s-1).
+    '''
+    vpd, gm, Tm = map(np.asarray, (vpd, gm, Tm))
+    Tm = np.maximum(Tm, 1e-12)
+    gs = gm / (1.0 + gm * vpd / Tm)
+    return np.asarray(gs)
+
+
+def calc_rst_from_gs_mol(gs_mol, T_K, p=1013.0):
+    '''Convert leaf stomatal conductance to single-leaf resistance (s m-1).
+
+    Parameters
+    ----------
+    gs_mol : float or array_like
+        Leaf stomatal conductance (mol m-2 s-1).
+    T_K : float or array_like
+        Leaf or air temperature (K).
+    p : float or array_like, optional
+        Atmospheric pressure (mb).
+
+    Returns
+    -------
+    Rst : float or array_like
+        Single-leaf stomatal resistance to water vapour transport (s m-1).
+    '''
+    gs_mol, T_K, p = map(np.asarray, (gs_mol, T_K, p))
+    k = TSEB.res.molm2s1_2_ms1(T_K, p)
+    gs_ms = np.maximum(gs_mol * k, 1e-15)
+    return 1.0 / gs_ms
+
+
+def calc_rst_monteith_vpd(vpd, gm, Tm, T_K, p=1013.0):
+    '''Minimum single-leaf stomatal resistance from Monteith (1995) VPD response.
+
+    Combines Kustas et al. (2022) Eqs. 3-4 with pyTSEB resistance units.
+    Default vineyard calibration: gm=0.58 mol m-2 s-1, Tm=9.11 mmol m-2 s-1.
+
+    Parameters
+    ----------
+    vpd : float or array_like
+        Vapor pressure deficit (mb).
+    gm : float or array_like
+        Maximum stomatal conductance (mol m-2 s-1).
+    Tm : float or array_like
+        Reference transpiration rate scaling parameter (mmol m-2 s-1).
+    T_K : float or array_like
+        Leaf or air temperature (K).
+    p : float or array_like, optional
+        Atmospheric pressure (mb).
+
+    Returns
+    -------
+    Rst : float or array_like
+        Minimum single-leaf stomatal resistance (s m-1).
+    '''
+    gs_mol = calc_leaf_stomatal_conductance_monteith(vpd, gm, Tm)
+    return calc_rst_from_gs_mol(gs_mol, T_K, p)
 
 
 def bulk_stomatal_resistance(LAI, Rst, leaf_type=TSEB.res.AMPHISTOMATOUS):

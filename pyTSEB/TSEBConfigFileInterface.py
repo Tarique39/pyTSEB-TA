@@ -170,6 +170,9 @@ class TSEBConfigFileInterface():
         if conf['water_stress']:
             conf['Rst_min'] = parser.getfloat('Rst_min', fallback=100)
             conf['R_ss'] = parser.getfloat('R_ss', fallback=500)
+            conf['Rst_form'] = parser.getint('Rst_form', fallback=0)
+            conf['gm'] = parser.getfloat('gm', fallback=0.58)
+            conf['Tm'] = parser.getfloat('Tm', fallback=9.11)
 
         # Add PM and SW specific parameters
         if conf['model'] == 'TSEB_PM':
@@ -177,6 +180,9 @@ class TSEBConfigFileInterface():
         if conf['model'] == 'TSEB_SW':
             conf['Rst_min'] = parser.getfloat('Rst_min', fallback=100)
             conf['R_ss'] = parser.getfloat('R_ss', fallback=500)
+            conf['Rst_form'] = parser.getint('Rst_form', fallback=0)
+            conf['gm'] = parser.getfloat('gm', fallback=0.58)
+            conf['Tm'] = parser.getfloat('Tm', fallback=9.11)
 
         conf['calc_row'] = parser.getint('calc_row', fallback=[0, 0])
 
