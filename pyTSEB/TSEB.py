@@ -1333,48 +1333,76 @@ def TSEB_SW(Tr_K,
                                                        }
                                                       )
 
-            if Rst_form:
-                Rst_vpd = pet.calc_rst_monteith_vpd(vpd[i], gm, Tm, T_A_K[i], p[i])
-                Rst_eff = np.maximum(Rst[i], Rst_vpd)
-            else:
-                Rst_eff = Rst[i]
-            R_c[i] = pet.bulk_stomatal_resistance(
-                LAI[i] * f_g[i], Rst_eff, leaf_type=leaf_type[i])
-            # Calculate the canopy and soil temperatures using the Priestley Taylor approach
-            _, _, _, C_s, C_c = pet.calc_effective_resistances_SW(R_A[i],
-                                                                        R_x[i],
-                                                                        R_S[i],
-                                                                        R_c[i],
-                                                                        Rss[i],
-                                                                        delta[i],
-                                                                        psicr[i])
-
-
             # Compute Soil Heat Flux Ratio
             G[i] = calc_G([calcG_params[0], calcG_array], Rn_S, i)
 
-            # Eq. 12 in [Shuttleworth1985]_
-            PM_C = (delta[i] * (Rn[i] - G[i]) + (rho_cp[i] * vpd[i] - delta[i] * R_x[i] * (Rn_S[i] - G[i])) / (
-                    R_A[i] + R_x[i])) / \
-                      (delta[i] + psicr[i] * (1. + R_c[i] / (R_A[i] + R_x[i])))
-            PM_C[np.isnan(PM_C)] = 0
-            # Eq. 13 in [Shuttleworth1985]_
-            PM_S = (delta[i] * (Rn[i] - G[i]) + (rho_cp[i] * vpd[i] - delta[i] * R_S[i] * delta_Rn[i]) / (
-                        R_A[i] + R_S[i])) / \
-                      (delta[i] + psicr[i] * (1. + Rss[i] / (R_A[i] + R_S[i])))
-            PM_S[np.isnan(PM_S)] = 0
-            # Eq. 11 in [Shuttleworth1985]_
-            LE[i] = C_c * PM_C + C_s * PM_S
-            H[i] = Rn[i] - G[i] - LE[i]
+            if Rst_form:
+                t_leaf = np.where(np.isfinite(T_C[i]), T_C[i], T_A_K[i])
+                (R_c[i],
+                 _,
+                 vpd_0,
+                 LE_C[i],
+                 LE_S[i],
+                 C_s,
+                 C_c) = pet.couple_sw_rc_vpd(
+                    vpd[i],
+                    delta[i],
+                    Rn[i],
+                    G[i],
+                    delta_Rn[i],
+                    Rn_S[i],
+                    rho_cp[i],
+                    psicr[i],
+                    R_A[i],
+                    R_x[i],
+                    R_S[i],
+                    Rss[i],
+                    Rst[i],
+                    gm,
+                    Tm,
+                    p[i],
+                    t_leaf,
+                    LAI[i],
+                    f_g[i],
+                    leaf_type[i],
+                    vpd_0_init=vpd[i])
+                H_C[i] = delta_Rn[i] - LE_C[i]
+                LE[i] = LE_C[i] + LE_S[i]
+                H[i] = Rn[i] - G[i] - LE[i]
+            else:
+                R_c[i] = pet.bulk_stomatal_resistance(
+                    LAI[i] * f_g[i], Rst[i], leaf_type=leaf_type[i])
+                # Calculate the canopy and soil temperatures using the Priestley Taylor approach
+                _, _, _, C_s, C_c = pet.calc_effective_resistances_SW(R_A[i],
+                                                                            R_x[i],
+                                                                            R_S[i],
+                                                                            R_c[i],
+                                                                            Rss[i],
+                                                                            delta[i],
+                                                                            psicr[i])
 
-            # Compute canopy and soil  fluxes
-            # Vapor pressure deficit at canopy source height (mb) # Eq. 8 in [Shuttleworth1985]
-            vpd_0 = vpd[i] + (delta[i] * (Rn[i] - G[i]) - (delta[i] + psicr[i]) * LE[i]) * R_A[i] / (rho_cp[i])
-            # Eq. 10 in Shuttleworth & Wallace 1985
-            LE_C[i] = (delta[i] * delta_Rn[i] + rho_cp[i] * vpd_0 / R_x[i]) / \
-                      (delta[i] + psicr[i] * (1. + R_c[i] / R_x[i]))
+                # Eq. 12 in [Shuttleworth1985]_
+                PM_C = (delta[i] * (Rn[i] - G[i]) + (rho_cp[i] * vpd[i] - delta[i] * R_x[i] * (Rn_S[i] - G[i])) / (
+                        R_A[i] + R_x[i])) / \
+                          (delta[i] + psicr[i] * (1. + R_c[i] / (R_A[i] + R_x[i])))
+                PM_C[np.isnan(PM_C)] = 0
+                # Eq. 13 in [Shuttleworth1985]_
+                PM_S = (delta[i] * (Rn[i] - G[i]) + (rho_cp[i] * vpd[i] - delta[i] * R_S[i] * delta_Rn[i]) / (
+                            R_A[i] + R_S[i])) / \
+                          (delta[i] + psicr[i] * (1. + Rss[i] / (R_A[i] + R_S[i])))
+                PM_S[np.isnan(PM_S)] = 0
+                # Eq. 11 in [Shuttleworth1985]_
+                LE[i] = C_c * PM_C + C_s * PM_S
+                H[i] = Rn[i] - G[i] - LE[i]
 
-            H_C[i] = delta_Rn[i] - LE_C[i]
+                # Compute canopy and soil  fluxes
+                # Vapor pressure deficit at canopy source height (mb) # Eq. 8 in [Shuttleworth1985]
+                vpd_0 = vpd[i] + (delta[i] * (Rn[i] - G[i]) - (delta[i] + psicr[i]) * LE[i]) * R_A[i] / (rho_cp[i])
+                # Eq. 10 in Shuttleworth & Wallace 1985
+                LE_C[i] = (delta[i] * delta_Rn[i] + rho_cp[i] * vpd_0 / R_x[i]) / \
+                          (delta[i] + psicr[i] * (1. + R_c[i] / R_x[i]))
+
+                H_C[i] = delta_Rn[i] - LE_C[i]
 
             T_C[i] = calc_T_C_series(Tr_K[i], T_A_K[i], R_A[i], R_x[i],
                                      R_S[i], f_theta[i], H_C[i], rho[i], c_p[i])

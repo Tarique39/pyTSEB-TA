@@ -25,6 +25,8 @@ F_LOW_TS = 253  # Low Soil Temperature flag
 F_LOW_TC = 252  # Low Canopy Temperature flag
 T_DIFF_THRES = 0.1
 STABILITY_THRES = -0.01
+VPD0_SW_SUBITER = 5
+VPD0_SW_TOL = 0.05  # mb, convergence tolerance for VPD0 coupling
 
 
 def penman_monteith(T_A_K,
@@ -527,13 +529,11 @@ def shuttleworth_wallace(T_A_K,
     F = np.asarray(LAI / f_c)  # Real LAI
     omega0 = TSEB.CI.calc_omega0_Kustas(LAI, f_c, x_LAD=x_LAD, isLAIeff=True)
 
-    # Calculate bulk stomatal resistance
-    if Rst_form:
-        Rst_eff = calc_rst_monteith_vpd(vpd, gm, Tm, T_A_K, p)
+    # Calculate bulk stomatal resistance (constant mode only; Rc,VPD updates in-loop)
+    if not Rst_form:
+        R_c = bulk_stomatal_resistance(LAI * f_g, Rst_min, leaf_type=leaf_type)
     else:
-        Rst_eff = Rst_min
-    R_c = bulk_stomatal_resistance(LAI * f_g, Rst_eff, leaf_type=leaf_type)
-    del leaf_type
+        R_c = np.full(T_A_K.shape, np.nan, dtype=np.float32)
 
     # Initially assume stable atmospheric conditions and set variables for
     # iteration of the Monin-Obukhov length
@@ -642,56 +642,92 @@ def shuttleworth_wallace(T_A_K,
                                         }
                                                            )
 
-            _, _, _, C_s[i], C_c[i] = calc_effective_resistances_SW(R_A[i],
-                                                                    R_x[i],
-                                                                    R_S[i],
-                                                                    R_c[i],
-                                                                    R_ss[i],
-                                                                    delta[i],
-                                                                    psicr[i])
-
-            # Compute net bulk longwave radiation and split between canopy and soil
+            # Net radiation and soil heat flux (common to both formulations)
             Ln[i] = emiss[i] * (L_dn[i] - TSEB.met.calc_stephan_boltzmann(T_0[i]))
             Ln_C[i] = (1. - taudl[i]) * Ln[i]
             Ln_S[i] = taudl[i] * Ln[i]
             Rn_C[i] = Sn_C[i] + Ln_C[i]
             Rn_S[i] = Sn_S[i] + Ln_S[i]
             Rn[i] = Rn_C[i] + Rn_S[i]
-            # Compute Soil Heat Flux Ratio
             G[i] = TSEB.calc_G([calcG_params[0], calcG_array], Rn_S, i)
 
-            # Eq. 12 in [Shuttleworth1988]_
-            PM_C[i] = (delta[i] * (Rn[i] - G[i]) + (
-                        rho_cp[i] * vpd[i] - delta[i] * R_x[i] * (Rn_S[i] - G[i])) / (
-                               R_A[i] + R_x[i])) / \
-                      (delta[i] + psicr[i] * (1. + R_c[i] / (R_A[i] + R_x[i])))
+            if Rst_form:
+                t_leaf = np.where(np.isfinite(T_C[i]), T_C[i], T_A_K[i])
+                vpd_0_seed = np.where(np.isfinite(vpd_0[i]), vpd_0[i], vpd[i])
+                (R_c[i],
+                 _,
+                 vpd_0[i],
+                 LE_C[i],
+                 LE_S[i],
+                 C_s[i],
+                 C_c[i]) = couple_sw_rc_vpd(
+                    vpd[i],
+                    delta[i],
+                    Rn[i],
+                    G[i],
+                    Rn_C[i],
+                    Rn_S[i],
+                    rho_cp[i],
+                    psicr[i],
+                    R_A[i],
+                    R_x[i],
+                    R_S[i],
+                    R_ss[i],
+                    0.,
+                    gm,
+                    Tm,
+                    p[i],
+                    t_leaf,
+                    LAI[i],
+                    f_g[i],
+                    leaf_type[i],
+                    vpd_0_init=vpd_0_seed)
+                H_C[i] = Rn_C[i] - LE_C[i]
+                H_S[i] = Rn_S[i] - G[i] - LE_S[i]
+                LE[i] = LE_C[i] + LE_S[i]
+                H[i] = Rn[i] - G[i] - LE[i]
+            else:
+                _, _, _, C_s[i], C_c[i] = calc_effective_resistances_SW(R_A[i],
+                                                                        R_x[i],
+                                                                        R_S[i],
+                                                                        R_c[i],
+                                                                        R_ss[i],
+                                                                        delta[i],
+                                                                        psicr[i])
 
-            # Avoid arithmetic error with no LAI
-            PM_C[np.isnan(PM_C)] = 0
-            # Eq. 13 in [Shuttleworth1988]_
-            PM_S[i] = (delta[i] * (Rn[i] - G[i]) + (
-                        rho_cp[i] * vpd[i] - delta[i] * R_S[i] * Rn_C[i]) / (
-                                   R_A[i] + R_S[i])) / \
-                      (delta[i] + psicr[i] * (1. + R_ss[i] / (R_A[i] + R_S[i])))
-            PM_S[np.isnan(PM_S)] = 0
-            # Eq. 11 in [Shuttleworth1988]_
-            LE[i] = C_c[i] * PM_C[i] + C_s[i] * PM_S[i]
-            H[i] = Rn[i] - G[i] - LE[i]
+                # Eq. 12 in [Shuttleworth1988]_
+                PM_C[i] = (delta[i] * (Rn[i] - G[i]) + (
+                            rho_cp[i] * vpd[i] - delta[i] * R_x[i] * (Rn_S[i] - G[i])) / (
+                                   R_A[i] + R_x[i])) / \
+                          (delta[i] + psicr[i] * (1. + R_c[i] / (R_A[i] + R_x[i])))
 
-            # Compute canopy and soil  fluxes
-            # Vapor pressure deficit at canopy source height (mb) # Eq. 8 in [Shuttleworth1988]_
-            vpd_0[i] = vpd[i] + (
-                        delta[i] * (Rn[i] - G[i]) - (delta[i] + psicr[i]) * LE[i]) * \
-                       R_A[i] / (rho_cp[i])
-            # Eq. 9 in Shuttleworth & Wallace 1985
-            LE_S[i] = (delta[i] * (Rn_S[i] - G[i]) + rho_cp[i] * vpd_0[i] / R_S[i]) / \
-                      (delta[i] + psicr[i] * (1. + R_ss[i] / R_S[i]))
-            LE_S[np.isnan(LE_S)] = 0
-            H_S[i] = Rn_S[i] - G[i] - LE_S[i]
-            # Eq. 10 in Shuttleworth & Wallace 1985
-            LE_C[i] = (delta[i] * Rn_C[i] + rho_cp[i] * vpd_0[i] / R_x[i]) / \
-                      (delta[i] + psicr[i] * (1. + R_c[i] / R_x[i]))
-            H_C[i] = Rn_C[i] - LE_C[i]
+                # Avoid arithmetic error with no LAI
+                PM_C[np.isnan(PM_C)] = 0
+                # Eq. 13 in [Shuttleworth1988]_
+                PM_S[i] = (delta[i] * (Rn[i] - G[i]) + (
+                            rho_cp[i] * vpd[i] - delta[i] * R_S[i] * Rn_C[i]) / (
+                                       R_A[i] + R_S[i])) / \
+                          (delta[i] + psicr[i] * (1. + R_ss[i] / (R_A[i] + R_S[i])))
+                PM_S[np.isnan(PM_S)] = 0
+                # Eq. 11 in [Shuttleworth1988]_
+                LE[i] = C_c[i] * PM_C[i] + C_s[i] * PM_S[i]
+                H[i] = Rn[i] - G[i] - LE[i]
+
+                # Compute canopy and soil  fluxes
+                # Vapor pressure deficit at canopy source height (mb) # Eq. 8 in [Shuttleworth1988]_
+                vpd_0[i] = vpd[i] + (
+                            delta[i] * (Rn[i] - G[i]) - (delta[i] + psicr[i]) * LE[i]) * \
+                           R_A[i] / (rho_cp[i])
+                # Eq. 9 in Shuttleworth & Wallace 1985
+                LE_S[i] = (delta[i] * (Rn_S[i] - G[i]) + rho_cp[i] * vpd_0[i] / R_S[i]) / \
+                          (delta[i] + psicr[i] * (1. + R_ss[i] / R_S[i]))
+                LE_S[np.isnan(LE_S)] = 0
+                H_S[i] = Rn_S[i] - G[i] - LE_S[i]
+                # Eq. 10 in Shuttleworth & Wallace 1985
+                LE_C[i] = (delta[i] * Rn_C[i] + rho_cp[i] * vpd_0[i] / R_x[i]) / \
+                          (delta[i] + psicr[i] * (1. + R_c[i] / R_x[i]))
+                H_C[i] = Rn_C[i] - LE_C[i]
+
             no_canopy = np.logical_and(i, np.isnan(LE_C))
             H_C[no_canopy] = np.nan
             T_0[i] = calc_T(H[i], T_A_K[i], R_A[i], rho_a[i], Cp[i])
@@ -1182,29 +1218,37 @@ def le_penman(r_n, g_flux, vpd, r_a, r_r, delta, rho, cp, psicr):
     return le
 
 
-def calc_leaf_stomatal_conductance_monteith(vpd, gm, Tm):
+def calc_leaf_stomatal_conductance_monteith(vpd, gm, Tm, p=1013.0):
     '''Leaf stomatal conductance as a function of VPD (Monteith 1995).
 
     Kustas et al. (2022) Irrigation Science, Eq. 3:
     gs = gm / (1 + gm * VPD / Tm)
 
+    VPD is converted from mb to molar fraction (VPD/p) to match the
+    GRAPEX calibration in Kustas et al. (2022) Fig. 5. Tm is given in
+    mmol m-2 s-1 and converted internally to mol m-2 s-1.
+
     Parameters
     ----------
     vpd : float or array_like
-        Vapor pressure deficit (mb).
+        Vapor pressure deficit (mb) at reference height or canopy source.
     gm : float or array_like
         Maximum stomatal conductance (mol m-2 s-1).
     Tm : float or array_like
         Reference transpiration rate scaling parameter (mmol m-2 s-1).
+    p : float or array_like, optional
+        Atmospheric pressure (mb).
 
     Returns
     -------
     gs : float or array_like
         Leaf stomatal conductance (mol m-2 s-1).
     '''
-    vpd, gm, Tm = map(np.asarray, (vpd, gm, Tm))
-    Tm = np.maximum(Tm, 1e-12)
-    gs = gm / (1.0 + gm * vpd / Tm)
+    vpd, gm, Tm, p = map(np.asarray, (vpd, gm, Tm, p))
+    p = np.maximum(p, 1e-6)
+    vpd_mol = np.maximum(vpd / p, 0.)
+    tm_mol = np.maximum(Tm * 1e-3, 1e-12)
+    gs = gm / (1.0 + gm * vpd_mol / tm_mol)
     return np.asarray(gs)
 
 
@@ -1240,13 +1284,13 @@ def calc_rst_monteith_vpd(vpd, gm, Tm, T_K, p=1013.0):
     Parameters
     ----------
     vpd : float or array_like
-        Vapor pressure deficit (mb).
+        Vapor pressure deficit (mb) at reference height or canopy source (VPD0).
     gm : float or array_like
         Maximum stomatal conductance (mol m-2 s-1).
     Tm : float or array_like
         Reference transpiration rate scaling parameter (mmol m-2 s-1).
     T_K : float or array_like
-        Leaf or air temperature (K).
+        Leaf or canopy temperature (K).
     p : float or array_like, optional
         Atmospheric pressure (mb).
 
@@ -1255,8 +1299,93 @@ def calc_rst_monteith_vpd(vpd, gm, Tm, T_K, p=1013.0):
     Rst : float or array_like
         Minimum single-leaf stomatal resistance (s m-1).
     '''
-    gs_mol = calc_leaf_stomatal_conductance_monteith(vpd, gm, Tm)
+    gs_mol = calc_leaf_stomatal_conductance_monteith(vpd, gm, Tm, p=p)
     return calc_rst_from_gs_mol(gs_mol, T_K, p)
+
+
+def calc_vpd0_kustas(vpd, delta, rn, g, le, r_a, rho_cp, psicr):
+    '''Canopy-source VPD (Kustas et al. 2022 Eq. 7).
+
+    Equivalent to Shuttleworth & Wallace (1985) Eq. 8.
+    '''
+    vpd, delta, rn, g, le, r_a, rho_cp, psicr = map(
+        np.asarray, (vpd, delta, rn, g, le, r_a, rho_cp, psicr))
+    rho_cp = np.where(np.abs(rho_cp) < 1e-12, 1e-12, rho_cp)
+    return vpd + (delta * (rn - g) - (delta + psicr) * le) * r_a / rho_cp
+
+
+def calc_le_c_kustas_eq6(delta_rn, vpd_0, rho_cp, delta, psicr, r_c, r_x):
+    '''Canopy latent heat flux (Kustas et al. 2022 Eq. 6).'''
+    delta_rn, vpd_0, rho_cp, delta, psicr, r_c, r_x = map(
+        np.asarray, (delta_rn, vpd_0, rho_cp, delta, psicr, r_c, r_x))
+    denom = delta + psicr * (1. + r_c / r_x)
+    denom = np.where(np.abs(denom) < 1e-12, 1e-12, denom)
+    le_c = (delta * delta_rn + rho_cp * vpd_0) / denom
+    le_c[np.isnan(le_c)] = 0
+    return le_c
+
+
+def calc_pm_s_sw(rn, g, delta_rn, vpd, delta, rho_cp, psicr, r_s, r_a, r_ss):
+    '''Soil Penman-Monteith term (Shuttleworth & Wallace 1985 Eq. 13).'''
+    rn, g, delta_rn, vpd, delta, rho_cp, psicr, r_s, r_a, r_ss = map(
+        np.asarray, (rn, g, delta_rn, vpd, delta, rho_cp, psicr, r_s, r_a, r_ss))
+    pm_s = ((delta * (rn - g)
+             + (rho_cp * vpd - delta * r_s * delta_rn) / (r_a + r_s))
+            / (delta + psicr * (1. + r_ss / (r_a + r_s))))
+    pm_s[np.isnan(pm_s)] = 0
+    return pm_s
+
+
+def calc_le_s_sw_vpd0(rn_s, g, vpd_0, delta, rho_cp, psicr, r_s, r_ss):
+    '''Soil latent heat flux with canopy-source VPD (SW Eq. 9).'''
+    rn_s, g, vpd_0, delta, rho_cp, psicr, r_s, r_ss = map(
+        np.asarray, (rn_s, g, vpd_0, delta, rho_cp, psicr, r_s, r_ss))
+    le_s = ((delta * (rn_s - g) + rho_cp * vpd_0 / r_s)
+            / (delta + psicr * (1. + r_ss / r_s)))
+    le_s[np.isnan(le_s)] = 0
+    return le_s
+
+
+def couple_sw_rc_vpd(vpd, delta, rn, g, delta_rn, rn_s, rho_cp, psicr,
+                     r_a, r_x, r_s, r_ss, rst_stress, gm, tm, p, t_leaf,
+                     lai, f_g, leaf_type, vpd_0_init=None):
+    '''Couple VPD0, Monteith stomatal resistance, and canopy LE for TSEB-SW Rc,VPD.
+
+    Implements Kustas et al. (2022) Eqs. 3-7 for the unstressed stomatal floor,
+    with optional stress floor on single-leaf resistance (rst_stress).
+
+    Returns
+    -------
+    r_c, rst_eff, vpd_0, le_c, le_s, c_s, c_c : array_like
+    '''
+    vpd_0 = np.asarray(vpd if vpd_0_init is None else vpd_0_init, dtype=np.float64)
+    t_leaf = np.asarray(t_leaf, dtype=np.float64)
+    rst_stress = np.asarray(rst_stress, dtype=np.float64)
+
+    for _ in range(VPD0_SW_SUBITER):
+        rst_vpd = calc_rst_monteith_vpd(vpd_0, gm, tm, t_leaf, p)
+        rst_eff = np.maximum(rst_stress, rst_vpd)
+        r_c = bulk_stomatal_resistance(lai * f_g, rst_eff, leaf_type=leaf_type)
+        _, _, _, c_s, c_c = calc_effective_resistances_SW(
+            r_a, r_x, r_s, r_c, r_ss, delta, psicr)
+        le_c = calc_le_c_kustas_eq6(delta_rn, vpd_0, rho_cp, delta, psicr, r_c, r_x)
+        pm_s = calc_pm_s_sw(rn, g, delta_rn, vpd, delta, rho_cp, psicr, r_s, r_a, r_ss)
+        le_bulk = c_c * le_c + c_s * pm_s
+        vpd_0_new = calc_vpd0_kustas(vpd, delta, rn, g, le_bulk, r_a, rho_cp, psicr)
+        vpd_0_new = np.maximum(vpd_0_new, 0.)
+        if np.all(np.abs(vpd_0_new - vpd_0) < VPD0_SW_TOL):
+            vpd_0 = vpd_0_new
+            break
+        vpd_0 = vpd_0_new
+
+    rst_vpd = calc_rst_monteith_vpd(vpd_0, gm, tm, t_leaf, p)
+    rst_eff = np.maximum(rst_stress, rst_vpd)
+    r_c = bulk_stomatal_resistance(lai * f_g, rst_eff, leaf_type=leaf_type)
+    _, _, _, c_s, c_c = calc_effective_resistances_SW(
+        r_a, r_x, r_s, r_c, r_ss, delta, psicr)
+    le_c = calc_le_c_kustas_eq6(delta_rn, vpd_0, rho_cp, delta, psicr, r_c, r_x)
+    le_s = calc_le_s_sw_vpd0(rn_s, g, vpd_0, delta, rho_cp, psicr, r_s, r_ss)
+    return r_c, rst_eff, vpd_0, le_c, le_s, c_s, c_c
 
 
 def bulk_stomatal_resistance(LAI, Rst, leaf_type=TSEB.res.AMPHISTOMATOUS):

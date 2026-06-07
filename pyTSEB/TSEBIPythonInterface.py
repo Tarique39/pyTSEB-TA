@@ -760,7 +760,8 @@ class TSEBIPythonInterface(TSEBConfigFileInterface):
             widgets.HTML(
                 '<i>Rst_min and R_ss are used by TSEB_SW and as unstressed '
                 'reference resistances when water stress is enabled. '
-                'Monteith VPD uses Kustas et al. (2022) Eq. 3 with gm and Tm.</i>'),
+                'Monteith VPD (Rst_form=1) uses canopy-source VPD0, Eq. 6, '
+                'and molar-fraction VPD per Kustas et al. (2022).</i>'),
             widgets.HBox([self.w_Rst_form]),
             widgets.HBox([self.w_gm, self.w_Tm]),
             widgets.HTML('<b>Water stress diagnostics</b>'),
